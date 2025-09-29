@@ -128,12 +128,12 @@ if not st.session_state.model_loaded:
 
         if model is not None:
             st.session_state.model = model
-            st.session_state.tokenizer = tokenizer
-            st.session_state.labels = labels
+            st.session_state.tokenizer = tok
+            st.session_state.labels = LABELS
             st.session_state.model_loaded = True
             st.session_state.error_message = ""
         else:
-            st.session_state.error_message = error
+            st.session_state.error_message = "เกิดข้อผิดพลาดในการโหลดโมเดล"
 
 st.title("📰 Thai News Classification")
 st.markdown("แอปพลิเคชันสำหรับจำแนกประเภทข่าวภาษาไทย โดยใช้โมเดล `wcberta-prachathai67k`")
