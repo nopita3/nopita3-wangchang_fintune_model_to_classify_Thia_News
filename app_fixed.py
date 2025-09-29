@@ -69,36 +69,13 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
       - chosen: รายการคลาสที่ "ผ่านเกณฑ์" (threshold หรือ top_k)
     """
     try:
-        # ทำความสะอาดข้อความก่อนส่งเข้า tokenizer
-        cleaned_texts = []
-        for text in texts:
-            # ลบอักขระที่อาจทำให้เกิดปัญหา
-            cleaned_text = text.strip()
-            if not cleaned_text:
-                cleaned_text = "ข้อความว่าง"  # fallback text
-            cleaned_texts.append(cleaned_text)
-        
         # Tokenize with safe parameters
-        enc = tok(
-            cleaned_texts, 
-            return_tensors="pt", 
-            truncation=True, 
-            max_length=MAX_LEN, 
-            padding=True,
-            add_special_tokens=True,  # เพิ่ม special tokens
-            return_attention_mask=True,  # ให้ return attention mask
-            return_token_type_ids=False  # ไม่ต้องการ token type ids สำหรับ RoBERTa
-        )
-        
-        # ตรวจสอบว่า input_ids ไม่มีค่าที่เกิน vocab_size
-        vocab_size = model.config.vocab_size
-        if torch.any(enc['input_ids'] >= vocab_size):
-            print(f"Warning: Found token IDs >= vocab_size ({vocab_size})")
-            # แทนที่ token ที่เกินด้วย UNK token
-            enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
-        
+        enc = tok(texts, return_tensors="pt", 
+                  truncation=True, 
+                  max_length=MAX_LEN, 
+                  padding=True)
         enc = {k: v.to(device) for k, v in enc.items()}
-
+        
         sigmoid = torch.nn.Sigmoid()
         with torch.no_grad():
             logits = model(**enc).logits
@@ -142,7 +119,7 @@ if st.button("🧠 ทำนายผล"):
     if not input_texts.strip():
         st.warning("กรุณาป้อนข้อความเพื่อทำนายผล")
     else:
-        texts = [text.strip() for text in input_texts.split('\n') if text.strip()]
+        texts = [input_texts.strip()]
         
         valid_texts = []
         for i, text in enumerate(texts):
