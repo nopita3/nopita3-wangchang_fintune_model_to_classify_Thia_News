@@ -17,50 +17,61 @@ THRESH    = 0.5
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# โหลด tokenizer
-tok = AutoTokenizer.from_pretrained(MODEL_DIR)
+if 'model_loaded' not in st.session_state:
+    st.session_state.model_loaded = False
+    st.session_state.model = None
+    st.session_state.tokenizer = None
+    st.session_state.labels = None
+    st.session_state.error_message = ""
 
-# โหลด model และจัดการ meta tensor
-try:
-    # วิธีที่ 1: โหลด model โดยตรงไปยัง device ที่ต้องการ
-    model = AutoModelForSequenceClassification.from_pretrained(
-        MODEL_DIR, 
-        torch_dtype=torch.float32,
-        device_map=None,  # ปิด automatic device mapping
-        low_cpu_mem_usage=False
-    )
-    model = model.to(device)
-    model.eval()
-    print("Model loaded successfully with direct device mapping")
-    
-except Exception as e:
-    print(f"Direct loading failed: {e}")
+def load_model_and_tokenizer():
+    # โหลด tokenizer
+    tok = AutoTokenizer.from_pretrained(MODEL_DIR)
+
+    # โหลด model และจัดการ meta tensor
     try:
-        # วิธีที่ 2: ใช้ to_empty() สำหรับ meta tensor
-        model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
-        if hasattr(model, 'to_empty'):
-            model = model.to_empty(device=device)
-        else:
-            model = model.to(device)
-        model.eval()
-        print("Model loaded successfully with to_empty method")
-        
-    except Exception as e2:
-        print(f"to_empty method failed: {e2}")
-        # วิธีที่ 3: โหลดแบบ CPU แล้ว move ทีละชิ้น
+        # วิธีที่ 1: โหลด model โดยตรงไปยัง device ที่ต้องการ
         model = AutoModelForSequenceClassification.from_pretrained(
-            MODEL_DIR,
+            MODEL_DIR, 
             torch_dtype=torch.float32,
-            device_map="cpu"
+            device_map=None,  # ปิด automatic device mapping
+            low_cpu_mem_usage=False
         )
         model = model.to(device)
         model.eval()
-        print("Model loaded successfully with CPU first method")
+        print("Model loaded successfully with direct device mapping")
+        
+    except Exception as e:
+        print(f"Direct loading failed: {e}")
+        try:
+            # วิธีที่ 2: ใช้ to_empty() สำหรับ meta tensor
+            model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+            if hasattr(model, 'to_empty'):
+                model = model.to_empty(device=device)
+            else:
+                model = model.to(device)
+            model.eval()
+            print("Model loaded successfully with to_empty method")
+            
+        except Exception as e2:
+            print(f"to_empty method failed: {e2}")
+            # วิธีที่ 3: โหลดแบบ CPU แล้ว move ทีละชิ้น
+            model = AutoModelForSequenceClassification.from_pretrained(
+                MODEL_DIR,
+                torch_dtype=torch.float32,
+                device_map="cpu"
+            )
+            model = model.to(device)
+            model.eval()
+            print("Model loaded successfully with CPU first method")
 
 
-with open(f"{MODEL_DIR}/label_names.json", encoding="utf-8") as f:
-    LABELS = json.load(f)
+    with open(f"{MODEL_DIR}/label_names.json", encoding="utf-8") as f:
+        LABELS = json.load(f)
 
+    return model, tok, LABELS
+
+model, tok, LABELS = load_model_and_tokenizer()
 
 def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int = None):
     """
@@ -113,6 +124,14 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
 st.title("📰 Thai News Classification")
 st.markdown("แอปพลิเคชันสำหรับจำแนกประเภทข่าวภาษาไทย โดยใช้โมเดล `wcberta-prachathai67k`")
 
+if st.session_state.model_loaded:
+    st.success("🟢 โมเดลพร้อมใช้งาน")
+else:
+    st.error("🔴 โมเดลไม่พร้อมใช้งาน")
+    if st.session_state.error_message:
+        with st.expander("ดูรายละเอียด Error"):
+            st.text(st.session_state.error_message)
+
 st.write("ป้อนข้อความที่ต้องการทำนาย (หนึ่งข้อความต่อหนึ่งบรรทัด)")
 input_texts = st.text_area("ใส่ข้อความที่นี่ (ไม่เกิน 512 คำต่อบรรทัด):", height=200, placeholder="ตัวอย่าง: กรมอุตุฯ เตือนวันนี้ทั่วไทยเจอฝนถล่ม...")
 
@@ -153,3 +172,10 @@ if st.button("🧠 ทำนายผล"):
                 except Exception as e:
                     st.error(f"เกิดข้อผิดพลาด: {str(e)}")
                     st.info("กรุณาตรวจสอบว่าโมเดลถูกโหลดอย่างถูกต้อง")
+
+if st.button("🔄 รีโหลดโมเดล"):
+    st.session_state.model_loaded = False
+    st.session_state.model = None
+    st.session_state.tokenizer = None
+    st.session_state.labels = None
+    st.rerun()  # Streamlit >= 1.27.0
