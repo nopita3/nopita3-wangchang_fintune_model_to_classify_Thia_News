@@ -121,6 +121,20 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
         })
     return results
 
+# โหลด model เมื่อเริ่มต้น
+if not st.session_state.model_loaded:
+    with st.spinner("🚀 กำลังโหลดโมเดล..."):
+        model, tokenizer, labels, error = load_model_and_tokenizer()
+        
+        if model is not None:
+            st.session_state.model = model
+            st.session_state.tokenizer = tokenizer
+            st.session_state.labels = labels
+            st.session_state.model_loaded = True
+            st.session_state.error_message = ""
+        else:
+            st.session_state.error_message = error
+
 st.title("📰 Thai News Classification")
 st.markdown("แอปพลิเคชันสำหรับจำแนกประเภทข่าวภาษาไทย โดยใช้โมเดล `wcberta-prachathai67k`")
 
