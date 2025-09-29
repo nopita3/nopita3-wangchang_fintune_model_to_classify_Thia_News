@@ -50,7 +50,7 @@ except Exception as e:
         # วิธีที่ 3: โหลดแบบ CPU แล้ว move ทีละชิ้น
         model = AutoModelForSequenceClassification.from_pretrained(
             MODEL_DIR,
-            torch_dtype=torch.float32,
+            type=torch.float32,
             device_map="cpu"
         )
         model = model.to(device)
