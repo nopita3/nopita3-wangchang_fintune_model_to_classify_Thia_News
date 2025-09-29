@@ -1,50 +1,5 @@
 import json, torch, numpy as np
-from transformers import AutoTokdef predict_with_probs(texts: list[str], threshold :float = THRESH , top_k:int = None):
-    """
-    คืน:
-      - probs_sorted: รายชื่อคลาส + prob เรียงจากมากไปน้อย
-      - chosen: รายการคลาสที่ "ผ่านเกณฑ์" (threshold หรือ top_k)
-    """
-    try:
-        # ทำความสะอาดข้อความก่อนส่งเข้า tokenizer
-        cleaned_texts = []
-        for text in texts:
-            # ลบอักขระที่อาจทำให้เกิดปัญหา
-            cleaned_text = text.strip()
-            if not cleaned_text:
-                cleaned_text = "ข้อความว่าง"  # fallback text
-            cleaned_texts.append(cleaned_text)
-        
-        # Tokenize with safe parameters
-        enc = tok(
-            cleaned_texts, 
-            return_tensors="pt", 
-            truncation=True, 
-            max_length=MAX_LEN, 
-            padding=True,
-            add_special_tokens=True,  # เพิ่ม special tokens
-            return_attention_mask=True,  # ให้ return attention mask
-            return_token_type_ids=False  # ไม่ต้องการ token type ids สำหรับ RoBERTa
-        )
-        
-        # ตรวจสอบว่า input_ids ไม่มีค่าที่เกิน vocab_size
-        vocab_size = model.config.vocab_size
-        if torch.any(enc['input_ids'] >= vocab_size):
-            print(f"Warning: Found token IDs >= vocab_size ({vocab_size})")
-            # แทนที่ token ที่เกินด้วย UNK token
-            enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
-        
-        enc = {k: v.to(device) for k, v in enc.items()}
-
-        sigmoid = torch.nn.Sigmoid()
-        with torch.no_grad():
-            logits = model(**enc).logits
-            probs = sigmoid(logits).cpu().numpy()  # (B, C)
-            
-    except Exception as e:
-        print(f"Error in tokenization or model prediction: {e}")
-        # Return empty results if error occurs
-        return [{"text": text, "probs_sorted": [], "chosen": []} for text in texts]odelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import streamlit as st
 import pandas as pd
 
@@ -107,19 +62,52 @@ with open(f"{MODEL_DIR}/label_names.json", encoding="utf-8") as f:
     LABELS = json.load(f)
 
 
-def predict_with_probs(texts: list[str], threshold :float = THRESH , top_k:int = None):
+def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int = None):
     """
     คืน:
       - probs_sorted: รายชื่อคลาส + prob เรียงจากมากไปน้อย
-      - chosen: รายการคลาสที่ “ผ่านเกณฑ์” (threshold หรือ top_k)
+      - chosen: รายการคลาสที่ "ผ่านเกณฑ์" (threshold หรือ top_k)
     """
-    enc = tok(texts, return_tensors="pt", truncation=True, max_length=MAX_LEN, padding=True)
-    enc = {k: v.to(device) for k, v in enc.items()}
+    try:
+        # ทำความสะอาดข้อความก่อนส่งเข้า tokenizer
+        cleaned_texts = []
+        for text in texts:
+            # ลบอักขระที่อาจทำให้เกิดปัญหา
+            cleaned_text = text.strip()
+            if not cleaned_text:
+                cleaned_text = "ข้อความว่าง"  # fallback text
+            cleaned_texts.append(cleaned_text)
+        
+        # Tokenize with safe parameters
+        enc = tok(
+            cleaned_texts, 
+            return_tensors="pt", 
+            truncation=True, 
+            max_length=MAX_LEN, 
+            padding=True,
+            add_special_tokens=True,  # เพิ่ม special tokens
+            return_attention_mask=True,  # ให้ return attention mask
+            return_token_type_ids=False  # ไม่ต้องการ token type ids สำหรับ RoBERTa
+        )
+        
+        # ตรวจสอบว่า input_ids ไม่มีค่าที่เกิน vocab_size
+        vocab_size = model.config.vocab_size
+        if torch.any(enc['input_ids'] >= vocab_size):
+            print(f"Warning: Found token IDs >= vocab_size ({vocab_size})")
+            # แทนที่ token ที่เกินด้วย UNK token
+            enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
+        
+        enc = {k: v.to(device) for k, v in enc.items()}
 
-    sigmoid = torch.nn.Sigmoid()
-    with torch.no_grad():
-        logits = model(**enc).logits
-        probs = sigmoid(logits).cpu().numpy()  # (B, C)
+        sigmoid = torch.nn.Sigmoid()
+        with torch.no_grad():
+            logits = model(**enc).logits
+            probs = sigmoid(logits).cpu().numpy()  # (B, C)
+            
+    except Exception as e:
+        print(f"Error in tokenization or model prediction: {e}")
+        # Return empty results if error occurs
+        return [{"text": text, "probs_sorted": [], "chosen": []} for text in texts]
 
     results = []
     for i, text in enumerate(texts):
@@ -131,13 +119,11 @@ def predict_with_probs(texts: list[str], threshold :float = THRESH , top_k:int =
             chosen = [LABELS[j] for j in order[:top_k]]
         else:
             chosen = []
-            for name , prob in probs_sorted:
-                
+            for name, prob in probs_sorted:
                 if prob >= threshold:
                     chosen.append(name)
                 else:
                     break
-            
 
         results.append({
             "text": text,
@@ -167,25 +153,26 @@ if st.button("🧠 ทำนายผล"):
 
         if valid_texts:
             with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
-                results = predict_with_probs(valid_texts, threshold=None, top_k=3)
-                
-                st.success("วิเคราะห์สำเร็จ!")
-                
-                st.subheader("ผลการทำนาย:")
-                for result in results:
-                    with st.container(border=True):
-                        st.markdown(f"**ข้อความ:** {result['text']}")
+                try:
+                    results = predict_with_probs(valid_texts, threshold=None, top_k=3)
+                    
+                    if results and all(result['probs_sorted'] for result in results):
+                        st.success("วิเคราะห์สำเร็จ!")
                         
-                        tags = ' '.join([f"`{cat}`" for cat in result['chosen']])
-                        st.markdown(f"**หมวดหมู่ที่ทำนาย:** {tags}")
+                        st.subheader("ผลการทำนาย:")
+                        for result in results:
+                            with st.container(border=True):
+                                st.markdown(f"**ข้อความ:** {result['text']}")
+                                
+                                tags = ' '.join([f"`{cat}`" for cat in result['chosen']])
+                                st.markdown(f"**หมวดหมู่ที่ทำนาย:** {tags}")
 
-                        with st.expander("ดูความน่าจะเป็นทั้งหมด"):
-                            df = pd.DataFrame(result['probs_sorted'], columns=['หมวดหมู่', 'ความน่าจะเป็น'])
-                            st.dataframe(df, use_container_width=True)
-                        st.markdown(f"**หมวดหมู่ที่ทำนาย:** {tags}")
-
-                        with st.expander("ดูความน่าจะเป็นทั้งหมด"):
-                            df = pd.DataFrame(result['probs_sorted'], columns=['หมวดหมู่', 'ความน่าจะเป็น'])
-                            st.dataframe(df, use_container_width=True)
-
-
+                                with st.expander("ดูความน่าจะเป็นทั้งหมด"):
+                                    df = pd.DataFrame(result['probs_sorted'], columns=['หมวดหมู่', 'ความน่าจะเป็น'])
+                                    st.dataframe(df, use_container_width=True)
+                    else:
+                        st.error("เกิดข้อผิดพลาดในการทำนาย กรุณาลองใหม่อีกครั้ง")
+                        
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาด: {str(e)}")
+                    st.info("กรุณาตรวจสอบว่าโมเดลถูกโหลดอย่างถูกต้อง")
