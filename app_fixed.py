@@ -156,7 +156,7 @@ if st.button("🧠 ทำนายผล"):
                 try:
                     results = predict_with_probs(valid_texts, threshold=None, top_k=3)
                     
-                    if results and all(result['probs_sorted'] for result in results):
+                    if results :
                         st.success("วิเคราะห์สำเร็จ!")
                         
                         st.subheader("ผลการทำนาย:")
