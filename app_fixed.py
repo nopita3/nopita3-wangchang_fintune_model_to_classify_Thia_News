@@ -10,12 +10,15 @@ st.set_page_config(
     layout="centered"
 )
 
-MODEL_DIR = "wcberta-prachathai67k-best"
-MAX_LEN = 512
-THRESH = 0.5   
+MODEL_DIR = "wcberta-prachathai67k-best"  # โฟลเดอร์ที่ save_pretrained ไว้
+MAX_LEN   = 512
+THRESH    = 0.5   
+
+
 
 # กำหนด device ก่อน
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 # Initialize session state for model
 if 'model_loaded' not in st.session_state:
@@ -39,7 +42,7 @@ def load_model_and_tokenizer():
         try:
             model = AutoModelForSequenceClassification.from_pretrained(
                 MODEL_DIR, 
-                dtype=torch.float32,
+                torch_dtype=torch.float32,
                 device_map=None,
                 low_cpu_mem_usage=False
             )
@@ -67,7 +70,7 @@ def load_model_and_tokenizer():
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
                         MODEL_DIR,
-                        dtype=torch.float32
+                        torch_dtype=torch.float32
                     )
                     model = model.to(device)
                     model.eval()
@@ -80,116 +83,92 @@ def load_model_and_tokenizer():
         with open(f"{MODEL_DIR}/label_names.json", encoding="utf-8") as f:
             labels = json.load(f)
         
-        print(f" ✅ All components loaded successfully! ")
+        print(f"✅ All components loaded successfully!")
         print(f"📊 Device: {device}")
         print(f"📚 Vocab size: {tokenizer.vocab_size}")
         print(f"🏷️ Number of labels: {len(labels)}")
         
-        return model, tokenizer, labels, ""
+        return model, tokenizer, labels
         
     except Exception as e:
         error_msg = f"Failed to load model: {str(e)}\n{traceback.format_exc()}"
         print(f"❌ {error_msg}")
         return None, None, None, error_msg
 
-def predict_with_probs(texts: list[str], model, tokenizer, labels, threshold: float = THRESH, top_k: int = None):
-    """ทำนายผลพร้อม detailed error reporting"""
+# โหลด tokenizer
+
+
+def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int = None):
+    """
+    คืน:
+      - probs_sorted: รายชื่อคลาส + prob เรียงจากมากไปน้อย
+      - chosen: รายการคลาสที่ "ผ่านเกณฑ์" (threshold หรือ top_k)
+    """
+    model, tokenizer, labels = load_model_and_tokenizer() 
     
-    # ตรวจสอบว่า model ถูกโหลดแล้ว
     if model is None or tokenizer is None:
         error_msg = "Model หรือ tokenizer ไม่ได้ถูกโหลด"
         print(f"❌ {error_msg}")
         return [{"text": text, "probs_sorted": [], "chosen": [], "error": error_msg} for text in texts]
-    
+
     try:
-        print(f"🔤 Input texts: {texts}")
-        print(f"📏 Text lengths: {[len(text) for text in texts]}")
+        # Tokenize with safe parameters
+        enc = tokenizer(texts, return_tensors="pt", 
+                  truncation=True, 
+                  max_length=MAX_LEN, 
+                  padding=True,
+                  return_token_type_ids=False)
         
-        # Tokenize
-        enc = tokenizer(
-            texts, 
-            return_tensors="pt", 
-            truncation=True, 
-            max_length=MAX_LEN, 
-            padding=True,
-            add_special_tokens=True,
-            return_attention_mask=True,
-            return_token_type_ids=False
-        )
-        
-        print(f"🔢 Token shape: {enc['input_ids'].shape}")
-        print(f"📊 Token range: {enc['input_ids'].min()} - {enc['input_ids'].max()}")
-        print(f"📚 Vocab size: {tokenizer.vocab_size}")
-        
-        # ตรวจสอบ token IDs
+        # ตรวจสอบและแก้ไข token IDs ที่เกินขอบเขต
         vocab_size = tokenizer.vocab_size
         if torch.any(enc['input_ids'] >= vocab_size):
-            print(f"⚠️ WARNING: Found token IDs >= vocab_size ({vocab_size})")
+            print(f"WARNING: Found token IDs >= vocab_size ({vocab_size})")
             enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
-            
+        
         if torch.any(enc['input_ids'] < 0):
-            print("⚠️ WARNING: Found negative token IDs")
+            print("WARNING: Found negative token IDs")
             enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
         
-        # Move to device
-        enc = {k: v.to(device) for k, v in enc.items()}
         
-        # Model prediction
+        enc = {k: v.to(device) for k, v in enc.items()}
+
         sigmoid = torch.nn.Sigmoid()
         with torch.no_grad():
-            print("🤖 Running model prediction...")
-            outputs = model(**enc)
-            logits = outputs.logits
-            probs = sigmoid(logits).cpu().numpy()
-            print(f"✅ Prediction successful! Output shape: {probs.shape}")
+            logits = model(**enc).logits
+            probs = sigmoid(logits).cpu().numpy()  # (B, C)
             
     except Exception as e:
-        error_msg = f"Prediction error: {str(e)}\n{traceback.format_exc()}"
-        print(f"❌ {error_msg}")
-        return [{"text": text, "probs_sorted": [], "chosen": [], "error": error_msg} for text in texts]
+        print(f"Error in tokenization or model prediction: {e}")
+        # Return empty results if error occurs
+        return [{"text": text, "probs_sorted": [], "chosen": []} for text in texts]
 
-    # สร้างผลลัพธ์
     results = []
     for i, text in enumerate(texts):
-        try:
-            p = probs[i]
-            order = np.argsort(p)[::-1]
-            probs_sorted = [(labels[j], float(p[j])) for j in order]
+        p = probs[i]                                 # ความน่าจะเป็นต่อคลาส
+        order = np.argsort(p)[::-1]                  # เรียงมาก→น้อย
+        probs_sorted = [(labels[j], float(p[j])) for j in order]
 
-            if top_k and top_k > 0:
-                chosen = [labels[j] for j in order[:top_k]]
-            else:
-                chosen = []
-                for name, prob in probs_sorted:
-                    if prob >= threshold:
-                        chosen.append(name)
-                    else:
-                        break
+        if top_k and top_k > 0:
+            chosen = [labels[j] for j in order[:top_k]]
+        else:
+            chosen = []
+            for name, prob in probs_sorted:
+                if prob >= threshold:
+                    chosen.append(name)
+                else:
+                    break
 
-            results.append({
-                "text": text,
-                "probs_sorted": probs_sorted,
-                "chosen": chosen,
-                "error": None
-            })
-            
-        except Exception as e:
-            error_msg = f"Result processing error for text {i}: {str(e)}"
-            print(f"❌ {error_msg}")
-            results.append({
-                "text": text,
-                "probs_sorted": [],
-                "chosen": [],
-                "error": error_msg
-            })
-            
-    print(f"✅ Generated {len(results)} results")
+        results.append({
+            "text": text,
+            "probs_sorted": probs_sorted,  # ดูอันดับทั้งหมดได้
+            "chosen": chosen               # คำตอบหลายคลาส
+        })
     return results
 
 # โหลด model เมื่อเริ่มต้น
 if not st.session_state.model_loaded:
     with st.spinner("🚀 กำลังโหลดโมเดล..."):
-        model, tokenizer, labels, error = load_model_and_tokenizer()
+        model, tokenizer, labels = load_model_and_tokenizer()
         
         if model is not None:
             st.session_state.model = model
@@ -199,10 +178,8 @@ if not st.session_state.model_loaded:
             st.session_state.error_message = ""
             st.success("✅ โมเดลโหลดสำเร็จ!")
         else:
-            st.session_state.error_message = error
-            st.error(f"❌ ไม่สามารถโหลดโมเดลได้: {error}")
+            st.error(f"❌ ไม่สามารถโหลดโมเดลได้: ")
 
-# UI
 st.title("📰 Thai News Classification")
 st.markdown("แอปพลิเคชันสำหรับจำแนกประเภทข่าวภาษาไทย โดยใช้โมเดล `wcberta-prachathai67k`")
 
@@ -215,77 +192,47 @@ else:
         with st.expander("ดูรายละเอียด Error"):
             st.text(st.session_state.error_message)
 
-# Debug information
-with st.expander("🔧 ข้อมูล Debug"):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Device:** {device}")
-        st.write(f"**Model Loaded:** {st.session_state.model_loaded}")
-    with col2:
-        if st.session_state.tokenizer:
-            st.write(f"**Vocab Size:** {st.session_state.tokenizer.vocab_size}")
-        if st.session_state.labels:
-            st.write(f"**Labels:** {len(st.session_state.labels)}")
 
-st.write("ป้อนข้อความที่ต้องการทำนาย:")
-input_texts = st.text_area("ใส่ข้อความที่นี่:", height=200, 
-                          placeholder="ตัวอย่าง: กรมอุตุฯ เตือนวันนี้ทั่วไทยเจอฝนถล่ม...")
+st.write("ป้อนข้อความที่ต้องการทำนาย (หนึ่งข้อความต่อหนึ่งบรรทัด)")
+input_texts = st.text_area("ใส่ข้อความที่นี่ (ไม่เกิน 512 คำต่อบรรทัด):", height=200, placeholder="ตัวอย่าง: กรมอุตุฯ เตือนวันนี้ทั่วไทยเจอฝนถล่ม...")
 
 if st.button("🧠 ทำนายผล"):
-    if not st.session_state.model_loaded:
-        st.error("โมเดลไม่ได้ถูกโหลด กรุณารีเฟรชหน้าเพื่อโหลดใหม่")
-    elif not input_texts.strip():
+    if not input_texts.strip():
         st.warning("กรุณาป้อนข้อความเพื่อทำนายผล")
     else:
         valid_texts = [input_texts.strip()]
-        
-        with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
-            results = predict_with_probs(
-                valid_texts, 
-                st.session_state.model,
-                st.session_state.tokenizer,
-                st.session_state.labels,
-                threshold=None, 
-                top_k=3
-            )
+        for text in valid_texts:
+            if len(text.split()) > 512:
+                st.error(f"ข้อความที่  มีความยาวเกิน 512 คำ: '{text[:50]}...'")
             
-            # Debug: แสดงผลลัพธ์
-            st.markdown(f"**Debug Results:** `{len(results)}` items")
-            for i, result in enumerate(results):
-                st.markdown(f"Result {i}: {len(result.get('probs_sorted', []))} probabilities")
-            
-            if results and any(result.get('probs_sorted') for result in results):
-                st.success("วิเคราะห์สำเร็จ!")
-                
-                for result in results:
-                    if result.get('error'):
-                        st.error(f"Error: {result['error']}")
-                        continue
-                        
-                    with st.container(border=True):
-                        st.markdown(f"**ข้อความ:** {result['text']}")
-                        
-                        if result['chosen']:
-                            tags = ' '.join([f"`{cat}`" for cat in result['chosen']])
-                            st.markdown(f"**หมวดหมู่ที่ทำนาย:** {tags}")
-                        else:
-                            st.markdown("**หมวดหมู่ที่ทำนาย:** ไม่สามารถจำแนกได้")
 
-                        with st.expander("ดูความน่าจะเป็นทั้งหมด"):
-                            if result['probs_sorted']:
-                                df = pd.DataFrame(result['probs_sorted'], columns=['หมวดหมู่', 'ความน่าจะเป็น'])
-                                st.dataframe(df)
-                            else:
-                                st.write("ไม่มีข้อมูลความน่าจะเป็น")
-            else:
-                st.error("เกิดข้อผิดพลาดในการทำนาย หรือไม่มีผลลัพธ์")
-                
-                # แสดงข้อมูล debug เมื่อเกิดปัญหา
-                if results:
-                    for i, result in enumerate(results):
-                        if result.get('error'):
-                            st.text(f"Error in result {i}: {result['error']}")
+        if valid_texts:
+            with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
+                try:
+                    results = predict_with_probs(valid_texts, threshold=None, top_k=3)
+                    st.markdown(f"ผล {results}")
+                    
+                    if results :
+                        st.success("วิเคราะห์สำเร็จ!")
+                        
+                        st.subheader("ผลการทำนาย:")
+                        for result in results:
+                            with st.container(border=True):
+                                st.markdown(f"**ข้อความ:** {result['text']}")
+                                
+                                tags = ' '.join([f"`{cat}`" for cat in result['chosen']])
+                                st.markdown(f"**หมวดหมู่ที่ทำนาย:** {tags}")
 
+                                with st.expander("ดูความน่าจะเป็นทั้งหมด"):
+                                    df = pd.DataFrame(result['probs_sorted'], columns=['หมวดหมู่', 'ความน่าจะเป็น'])
+                                    st.dataframe(df, width='stretch')
+                    else:
+                        st.error("เกิดข้อผิดพลาดในการทำนาย กรุณาลองใหม่อีกครั้ง")
+                        
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาด: {str(e)}")
+                    st.info("กรุณาตรวจสอบว่าโมเดลถูกโหลดอย่างถูกต้อง")
+                    
 # ปุ่มรีเซ็ต model
 if st.button("🔄 รีโหลดโมเดล"):
     st.session_state.model_loaded = False
