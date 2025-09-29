@@ -232,11 +232,11 @@ if st.button("🧠 ทำนายผล"):
                 except Exception as e:
                     st.error(f"เกิดข้อผิดพลาด: {str(e)}")
                     st.info("กรุณาตรวจสอบว่าโมเดลถูกโหลดอย่างถูกต้อง")
-                    
+
 # ปุ่มรีเซ็ต model
 if st.button("🔄 รีโหลดโมเดล"):
     st.session_state.model_loaded = False
     st.session_state.model = None
     st.session_state.tokenizer = None
     st.session_state.labels = None
-    st.experimental_rerun()
+    st.rerun()
