@@ -13,11 +13,49 @@ MODEL_DIR = "wcberta-prachathai67k-best"  # โฟลเดอร์ที่ sa
 MAX_LEN   = 512
 THRESH    = 0.5   
 
-tok = AutoTokenizer.from_pretrained(MODEL_DIR)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR).eval()
+# กำหนด device ก่อน
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
-model.to(device)
+print(f"Using device: {device}")
+
+# โหลด tokenizer
+tok = AutoTokenizer.from_pretrained(MODEL_DIR)
+
+# โหลด model และจัดการ meta tensor
+try:
+    # วิธีที่ 1: โหลด model โดยตรงไปยัง device ที่ต้องการ
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_DIR, 
+        torch_dtype=torch.float32,
+        device_map=None,  # ปิด automatic device mapping
+        low_cpu_mem_usage=False
+    )
+    model = model.to(device)
+    model.eval()
+    print("Model loaded successfully with direct device mapping")
+    
+except Exception as e:
+    print(f"Direct loading failed: {e}")
+    try:
+        # วิธีที่ 2: ใช้ to_empty() สำหรับ meta tensor
+        model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+        if hasattr(model, 'to_empty'):
+            model = model.to_empty(device=device)
+        else:
+            model = model.to(device)
+        model.eval()
+        print("Model loaded successfully with to_empty method")
+        
+    except Exception as e2:
+        print(f"to_empty method failed: {e2}")
+        # วิธีที่ 3: โหลดแบบ CPU แล้ว move ทีละชิ้น
+        model = AutoModelForSequenceClassification.from_pretrained(
+            MODEL_DIR,
+            torch_dtype=torch.float32,
+            device_map="cpu"
+        )
+        model = model.to(device)
+        model.eval()
+        print("Model loaded successfully with CPU first method")
 
 
 with open(f"{MODEL_DIR}/label_names.json", encoding="utf-8") as f:
