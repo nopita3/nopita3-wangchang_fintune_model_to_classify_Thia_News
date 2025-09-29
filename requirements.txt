@@ -1,4 +1,3 @@
-jsonlib-python
 torch
 numpy
 transformers
