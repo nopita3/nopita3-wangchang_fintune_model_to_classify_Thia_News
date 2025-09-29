@@ -197,7 +197,7 @@ st.write("ป้อนข้อความที่ต้องการทำ�
 input_texts = st.text_area("ใส่ข้อความที่นี่ (ไม่เกิน 512 คำต่อบรรทัด):", height=200, placeholder="ตัวอย่าง: กรมอุตุฯ เตือนวันนี้ทั่วไทยเจอฝนถล่ม...")
 
 if st.button("🧠 ทำนายผล"):
-    
+
     if not st.session_state.model_loaded:
         st.error("โมเดลไม่ได้ถูกโหลด กรุณารีเฟรชหน้าเพื่อโหลดใหม่")
 
@@ -213,7 +213,12 @@ if st.button("🧠 ทำนายผล"):
         if valid_texts:
             with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
                 try:
-                    results = predict_with_probs(valid_texts, threshold=None, top_k=3)
+                    results = predict_with_probs(valid_texts, 
+                                                 st.session_state.model,
+                                                 st.session_state.tokenizer,
+                                                 st.session_state.labels,
+                                                 threshold=None, top_k=3)
+                    
                     st.markdown(f"ผล {results}")
                     
                     if results :
