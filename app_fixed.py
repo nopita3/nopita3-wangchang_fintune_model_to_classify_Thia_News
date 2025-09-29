@@ -130,8 +130,7 @@ if st.button("🧠 ทำนายผล"):
             with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
                 try:
                     results = predict_with_probs(valid_texts, threshold=None, top_k=3)
-                    if results[0]['probs_sorted'] is None: 
-                        st.error("ไม่คืนค่า prob")
+                    st.markdown(f"ผล {results}")
                     
                     if results :
                         st.success("วิเคราะห์สำเร็จ!")
