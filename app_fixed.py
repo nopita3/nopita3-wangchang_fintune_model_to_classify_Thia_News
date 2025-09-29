@@ -73,7 +73,8 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
         enc = tok(texts, return_tensors="pt", 
                   truncation=True, 
                   max_length=MAX_LEN, 
-                  padding=True)
+                  padding=True,
+                  return_token_type_ids=False)
         enc = {k: v.to(device) for k, v in enc.items()}
 
         sigmoid = torch.nn.Sigmoid()
