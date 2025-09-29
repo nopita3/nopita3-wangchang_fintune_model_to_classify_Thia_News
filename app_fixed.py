@@ -25,7 +25,7 @@ try:
     # วิธีที่ 1: โหลด model โดยตรงไปยัง device ที่ต้องการ
     model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_DIR, 
-        torch_dtype=torch.float32,
+        dtype=torch.float32,
         device_map=None,  # ปิด automatic device mapping
         low_cpu_mem_usage=False
     )
