@@ -1,0 +1,6 @@
+jsonlib-python
+torch
+numpy
+transformers
+streamlit
+pandas
