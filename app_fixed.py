@@ -75,6 +75,18 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
                   max_length=MAX_LEN, 
                   padding=True,
                   return_token_type_ids=False)
+        
+        # ตรวจสอบและแก้ไข token IDs ที่เกินขอบเขต
+        vocab_size = tok.vocab_size
+        if torch.any(enc['input_ids'] >= vocab_size):
+            print(f"WARNING: Found token IDs >= vocab_size ({vocab_size})")
+            enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
+        
+        if torch.any(enc['input_ids'] < 0):
+            print("WARNING: Found negative token IDs")
+            enc['input_ids'] = torch.clamp(enc['input_ids'], 0, vocab_size - 1)
+        
+        
         enc = {k: v.to(device) for k, v in enc.items()}
 
         sigmoid = torch.nn.Sigmoid()
