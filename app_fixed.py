@@ -120,20 +120,19 @@ if st.button("🧠 ทำนายผล"):
     if not input_texts.strip():
         st.warning("กรุณาป้อนข้อความเพื่อทำนายผล")
     else:
-        texts = [input_texts.strip()]
-        
-        valid_texts = []
-        for i, text in enumerate(texts):
+        valid_texts = [input_texts.strip()]
+        for text in valid_texts:
             if len(text.split()) > 512:
-                st.error(f"ข้อความที่ {i+1} มีความยาวเกิน 512 คำ: '{text[:50]}...'")
-            else:
-                valid_texts.append(text)
+                st.error(f"ข้อความที่  มีความยาวเกิน 512 คำ: '{text[:50]}...'")
+            
 
         if valid_texts:
             with st.spinner("🤖 กำลังวิเคราะห์ข้อความ..."):
                 try:
                     results = predict_with_probs(valid_texts, threshold=None, top_k=3)
-                    print(results)
+                    if results["probs_sorted"] is None: 
+                        st.error("ไม่คืนค่า prob")
+                    
                     if results :
                         st.success("วิเคราะห์สำเร็จ!")
                         
