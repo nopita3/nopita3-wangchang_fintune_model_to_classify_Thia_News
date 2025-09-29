@@ -39,7 +39,7 @@ def load_model_and_tokenizer():
         try:
             model = AutoModelForSequenceClassification.from_pretrained(
                 MODEL_DIR, 
-                torch_dtype=torch.float32,
+                dtype=torch.float32,
                 device_map=None,
                 low_cpu_mem_usage=False
             )
@@ -67,7 +67,7 @@ def load_model_and_tokenizer():
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
                         MODEL_DIR,
-                        torch_dtype=torch.float32
+                        dtype=torch.float32
                     )
                     model = model.to(device)
                     model.eval()
