@@ -124,8 +124,8 @@ def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int =
 # โหลด model เมื่อเริ่มต้น
 if not st.session_state.model_loaded:
     with st.spinner("🚀 กำลังโหลดโมเดล..."):
-        model, tokenizer, labels, error = load_model_and_tokenizer()
-        
+        model, tok, LABELS = load_model_and_tokenizer()
+
         if model is not None:
             st.session_state.model = model
             st.session_state.tokenizer = tokenizer
