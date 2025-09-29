@@ -98,13 +98,13 @@ def load_model_and_tokenizer():
 # โหลด tokenizer
 
 
-def predict_with_probs(texts: list[str], threshold: float = THRESH, top_k: int = None):
+def predict_with_probs(texts: list[str],model, tokenizer, labels, threshold: float = THRESH, top_k: int = None):
     """
     คืน:
       - probs_sorted: รายชื่อคลาส + prob เรียงจากมากไปน้อย
       - chosen: รายการคลาสที่ "ผ่านเกณฑ์" (threshold หรือ top_k)
     """
-    model, tokenizer, labels = load_model_and_tokenizer() 
+    
     
     if model is None or tokenizer is None:
         error_msg = "Model หรือ tokenizer ไม่ได้ถูกโหลด"
@@ -197,6 +197,10 @@ st.write("ป้อนข้อความที่ต้องการทำ�
 input_texts = st.text_area("ใส่ข้อความที่นี่ (ไม่เกิน 512 คำต่อบรรทัด):", height=200, placeholder="ตัวอย่าง: กรมอุตุฯ เตือนวันนี้ทั่วไทยเจอฝนถล่ม...")
 
 if st.button("🧠 ทำนายผล"):
+    
+    if not st.session_state.model_loaded:
+        st.error("โมเดลไม่ได้ถูกโหลด กรุณารีเฟรชหน้าเพื่อโหลดใหม่")
+
     if not input_texts.strip():
         st.warning("กรุณาป้อนข้อความเพื่อทำนายผล")
     else:
